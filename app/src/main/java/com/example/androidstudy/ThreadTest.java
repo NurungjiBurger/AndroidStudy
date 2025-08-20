@@ -1,8 +1,8 @@
 package com.example.androidstudy;
 
-public class Main {
+public class ThreadTest {
     public static void main(String[] args) throws InterruptedException {
-        int n = 50000; // 생성할 스레드 수
+        int n = 50000;
         Thread[] threads = new Thread[n];
 
         Runtime runtime = Runtime.getRuntime();
