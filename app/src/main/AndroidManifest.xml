@@ -27,16 +27,29 @@
             </intent-filter>
         </activity>
 
-        <!-- 포그라운드 서비스 -->
         <service
             android:name=".RunningService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
-        <!-- 바인드 서비스 -->
         <service
             android:name=".BoundService"
             android:exported="false" />
+
+        <!-- 브로드캐스트 리시버 (정적 등록) -->
+        <receiver
+            android:name=".MyBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name=".MyContentProvider"
+            android:authorities="com.example.androidstudy.provider"
+            android:exported="true" />
 
     </application>
 

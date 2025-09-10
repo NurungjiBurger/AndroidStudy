@@ -1,9 +1,11 @@
 package com.example.androidstudy
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.os.Build
 import android.os.Bundle
@@ -43,6 +45,8 @@ class MainActivity : ComponentActivity() {
         private set
     var isServiceBound = false
         private set
+
+    private lateinit var broadcastReceiver: MyBroadcastReceiver
 
     val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -88,16 +92,38 @@ class MainActivity : ComponentActivity() {
 
         askNotificationPermission()
 
+        // 브로드캐스트 리시버 등록 (동적 등록)
+        registerBroadcastReceiver()
+
         setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ServiceTestScreen()
+                    AndroidComponentsTestScreen()
                 }
             }
         }
+    }
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private fun registerBroadcastReceiver() {
+        broadcastReceiver = MyBroadcastReceiver()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction(Intent.ACTION_BATTERY_LOW)
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(MyBroadcastReceiver.CUSTOM_ACTION)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(broadcastReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(broadcastReceiver, filter)
+        }
+        Log.d(TAG, "브로드캐스트 리시버 등록됨")
     }
 
     private fun askNotificationPermission() {
@@ -135,15 +161,23 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         Log.d(TAG, "onDestroy: 액티비티 소멸")
 
+        try {
+            unregisterReceiver(broadcastReceiver)
+            Log.d(TAG, "브로드캐스트 리시버 등록 해제됨")
+        } catch (e: Exception) {
+            Log.e(TAG, "브로드캐스트 리시버 등록 해제 실패", e)
+        }
+
         unbindFromService()
     }
 }
 
 @Composable
-fun ServiceTestScreen() {
+fun AndroidComponentsTestScreen() {
     var activityCounter by rememberSaveable { mutableStateOf(0) }
     var serviceNumber by rememberSaveable { mutableStateOf(0) }
     var serviceStatus by rememberSaveable { mutableStateOf("서비스 연결 안됨") }
+    var contentProviderData by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -159,30 +193,37 @@ fun ServiceTestScreen() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Service Test",
+            text = "Android Components Test",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(20.dp))
-        
+
         Text(
             text = "Activity Counter: $activityCounter",
             fontSize = 16.sp
         )
         Spacer(modifier = Modifier.height(10.dp))
-        
+
         Text(
             text = "Service Number: $serviceNumber",
             fontSize = 16.sp
         )
         Spacer(modifier = Modifier.height(10.dp))
-        
+
         Text(
             text = serviceStatus,
             fontSize = 14.sp
         )
-        
-        Spacer(modifier = Modifier.height(40.dp))
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = contentProviderData,
+            fontSize = 12.sp
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         Text("포그라운드 서비스", fontWeight = FontWeight.Bold)
         Row {
@@ -202,7 +243,7 @@ fun ServiceTestScreen() {
                 Text("포그라운드 중지")
             }
         }
-        
+
         Spacer(modifier = Modifier.height(20.dp))
 
         Text("바인드 서비스", fontWeight = FontWeight.Bold)
@@ -220,9 +261,9 @@ fun ServiceTestScreen() {
                 Text("바인드 해제")
             }
         }
-        
+
         Spacer(modifier = Modifier.height(10.dp))
-        
+
         Row {
             Button(onClick = {
                 val mainActivity = context as MainActivity
@@ -242,6 +283,70 @@ fun ServiceTestScreen() {
                 }
             }) {
                 Text("새 숫자 생성")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text("브로드캐스트 리시버", fontWeight = FontWeight.Bold)
+        Button(onClick = {
+            val intent = Intent(MyBroadcastReceiver.CUSTOM_ACTION).apply {
+                //setPackage(context.packageName)
+                putExtra("message", "커스텀 브로드캐스트 메시지!")
+            }
+            context.sendBroadcast(intent)
+        }) {
+            Text("커스텀 브로드캐스트 전송")
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text("콘텐츠 프로바이더", fontWeight = FontWeight.Bold)
+        Button(onClick = {
+            try {
+                val cursor = context.contentResolver.query(
+                    MyContentProvider.CONTENT_URI,
+                    null, null, null, null
+                )
+                cursor?.use {
+                    val data = StringBuilder()
+                    while (it.moveToNext()) {
+                        val id = it.getInt(it.getColumnIndexOrThrow("id"))
+                        val name = it.getString(it.getColumnIndexOrThrow("name"))
+                        val email = it.getString(it.getColumnIndexOrThrow("email"))
+                        data.append("ID: $id, 이름: $name, 이메일: $email\n")
+                    }
+                    contentProviderData = data.toString()
+                }
+            } catch (e: Exception) {
+                contentProviderData = "오류: ${e.message}"
+            }
+        }) {
+            Text("콘텐츠 프로바이더 조회")
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text("인텐트 테스트", fontWeight = FontWeight.Bold)
+        Row {
+            Button(onClick = {
+                // 명시적 인텐트
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    putExtra("message", "명시적 인텐트로 전달된 메시지")
+                }
+                context.startActivity(intent)
+            }) {
+                Text("명시적 인텐트")
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Button(onClick = {
+                // 암시적 인텐트
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = android.net.Uri.parse("https://www.google.com")
+                }
+                context.startActivity(intent)
+            }) {
+                Text("암시적 인텐트")
             }
         }
     }
